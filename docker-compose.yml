@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: finnpipe_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: finnpipe
+      POSTGRES_PASSWORD: 2437824378
+      POSTGRES_DB: finnpipe
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: finnpipe_clickhouse
+    restart: unless-stopped
+    ports:
+      - "8123:8123"   # HTTP interface
+      - "9000:9000"   # Native TCP interface
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+volumes:
+  postgres_data:
+  clickhouse_data:
