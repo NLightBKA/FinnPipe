@@ -3,6 +3,9 @@ services:
     image: postgres:16
     container_name: finnpipe_postgres
     restart: unless-stopped
+    networks:
+      finnpipe_net:
+        ipv4_address: 172.28.0.10
     environment:
       POSTGRES_USER: finnpipe
       POSTGRES_PASSWORD: 2437824378
@@ -16,15 +19,28 @@ services:
     image: clickhouse/clickhouse-server:latest
     container_name: finnpipe_clickhouse
     restart: unless-stopped
-    ports:
-      - "8123:8123"   # HTTP interface
-      - "9000:9000"   # Native TCP interface
+    environment:
+      CLICKHOUSE_USER: finnpipe
+      CLICKHOUSE_PASSWORD: 2437824378
+    networks:
+      finnpipe_net:
+        ipv4_address: 172.28.0.11
     volumes:
       - clickhouse_data:/var/lib/clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
     ulimits:
       nofile:
         soft: 262144
         hard: 262144
+
+networks:
+  finnpipe_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
 
 volumes:
   postgres_data:
