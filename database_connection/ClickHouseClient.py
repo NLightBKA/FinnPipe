@@ -1,4 +1,5 @@
 import clickhouse_connect
+
 from database_connection.DatabaseClient import DatabaseClient
 class ClickHouseClient(DatabaseClient):
     def __init__(self,host="localhost", port=8123, user="finnpipe", password="2437824378"):
@@ -8,6 +9,11 @@ class ClickHouseClient(DatabaseClient):
             user=user,
             password=password
         )
+
+    def insert_many(self, table_name, columns, data_list):
+        self.client.insert(table_name,  data_list,columns)
+
+   
 
     def execute_query_list(self, query_list):
         fetchall_results = []

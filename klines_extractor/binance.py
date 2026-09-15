@@ -1,4 +1,5 @@
 import requests
+from email.utils import parsedate_to_datetime
 BINANCE_API_URL = "https://api.binance.com/api/v3/klines"
 
 interval_to_timestamp = {
@@ -28,7 +29,7 @@ Args:
 Raises:
     ValueError: If the time range exceeds the limit.
 """
-def check_limit (interval,start_time, end_time):
+def check_limit (start_time, end_time,interval):
     interval_in_ms = interval_to_timestamp.get(interval)
     
     first_candle_open_time = int( start_time / interval_in_ms) * interval_in_ms
@@ -48,7 +49,15 @@ Args:
 Returns:
     List of candlestick data that comprehend start_time and end_time : {[Open time, Open, High, Low, Close, Volume, Close time, Quote asset volume, Number of trades, Taker buy base asset volume, Taker buy quote asset volume, Ignore],...}
 """
-def extract_binance_candles(symbol,  start_time, end_time, interval="1m"):
+
+def clean_candles(candles):
+    cleaned_candles = []
+    for candle in candles:
+        cleaned_candle = candle[:11]  # Keep only the first 11 elements
+        cleaned_candles.append(cleaned_candle)
+    return cleaned_candles
+
+def extract_past_binance_candles(symbol,  start_time, end_time, interval="1m"):
     check_limit(start_time, end_time,interval)
     params = {
         "symbol": symbol,
@@ -57,5 +66,10 @@ def extract_binance_candles(symbol,  start_time, end_time, interval="1m"):
         "endTime": end_time
     }
     response = requests.get(BINANCE_API_URL, params=params)  #responce contain candles where open_time lie within [start_time,end_time]
-    response.raise_for_status()  
-    return response.json()
+    response.raise_for_status()  #raise an exception if the request was unsuccessful
+    response_date_header = response.headers.get('Date')
+    dt= parsedate_to_datetime(response_date_header)
+    timestamp = int(dt.timestamp() * 1000)
+    if response.json()[-1][6] > timestamp:
+        response.json().pop(-1) #remove the last candle if it is not closed yet
+    return clean_candles(response.json())
