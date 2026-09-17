@@ -12,6 +12,7 @@ class ClickHouseClient(DatabaseClient):
 
     def insert_many(self, table_name, columns, data_list):
         self.client.insert(table_name,  data_list,columns)
+      
 
    
 
@@ -19,6 +20,7 @@ class ClickHouseClient(DatabaseClient):
         fetchall_results = []
         for query in query_list:
             fetchall_results.append(self.execute_query(query))
+      
         return fetchall_results
 
     def execute_query(self, query):
@@ -28,6 +30,7 @@ class ClickHouseClient(DatabaseClient):
             return self.client.query(query).result_rows
 
         self.client.command(query)
+      
         return None
 
     def commit(self):
@@ -35,3 +38,5 @@ class ClickHouseClient(DatabaseClient):
 
     def rollback(self):
         pass
+
+  

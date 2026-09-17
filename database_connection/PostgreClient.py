@@ -21,6 +21,7 @@ class PostgreClient(DatabaseClient):
                     fetchall_results.append(cursor.fetchall())
                 else:
                     fetchall_results.append(None)
+        self.commit()  
         return fetchall_results
 
     def execute_query(self, query):
@@ -28,6 +29,7 @@ class PostgreClient(DatabaseClient):
             cursor.execute(query)
             if cursor.description is not None:
                 return cursor.fetchall()
+        self.commit()  
         return None 
 
     def commit(self):
@@ -44,10 +46,14 @@ class PostgreClient(DatabaseClient):
             print(f"Error occurred while rolling back: {e}")
 
     def insert_many(self, table_name, columns, data_list):
-        query = sql.SQL("INSERT INTO {} ({}) VALUES %s").format(
-            sql.Identifier(table_name),
-            sql.SQL(', ').join(map(sql.Identifier, columns))
-        )
-        with self.client.cursor() as cursor:
-            execute_values(cursor, query, data_list)
-   
+        try:
+            query = sql.SQL("INSERT INTO {} ({}) VALUES %s ON CONFLICT DO NOTHING").format(
+                sql.Identifier(table_name),
+                sql.SQL(', ').join(map(sql.Identifier, columns))
+            )
+            with self.client.cursor() as cursor:
+                execute_values(cursor, query, data_list)
+            self.commit()  # Commit after inserting many rows
+        except Exception as e:
+            self.rollback()
+            print(f"Error occurred while inserting many rows: {e}")

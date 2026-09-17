@@ -58,6 +58,7 @@ def clean_candles(candles):
     return cleaned_candles
 
 def extract_past_binance_candles(symbol,  start_time, end_time, interval="1m"):
+    symbol = symbol.upper()
     check_limit(start_time, end_time,interval)
     params = {
         "symbol": symbol,
@@ -70,6 +71,7 @@ def extract_past_binance_candles(symbol,  start_time, end_time, interval="1m"):
     response_date_header = response.headers.get('Date')
     dt= parsedate_to_datetime(response_date_header)
     timestamp = int(dt.timestamp() * 1000)
-    if response.json()[-1][6] > timestamp:
-        response.json().pop(-1) #remove the last candle if it is not closed yet
+    if response.json():
+        if response.json()[-1][6] > timestamp:
+            response.json().pop(-1) #remove the last candle if it is not closed yet
     return clean_candles(response.json())
