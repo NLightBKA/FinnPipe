@@ -59,8 +59,8 @@ class BinanceCandlesHistoryService:
         return candles, failed_batches
         
         
-    def get_candles(self, symbol, start_time, end_time,interval="1m"):
-        currently_stored_candles,missing_ranges = self.common_binance_candles_repository.get_candles(symbol, start_time, end_time,interval)
+    def get_candles(self, symbol, start_time, end_time):
+        currently_stored_candles,missing_ranges = self.common_binance_candles_repository.get_candles(symbol, start_time, end_time)
         failed_batches_from_all_fetches = queue.Queue()
         for missing_range in missing_ranges:
             missing_start_time, missing_end_time = missing_range
