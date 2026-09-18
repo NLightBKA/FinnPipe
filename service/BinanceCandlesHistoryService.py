@@ -1,14 +1,16 @@
 from klines_extractor.binance import extract_past_binance_candles
 import queue
-
+import threading
 from respository.BinanceCandlesHistoryRespository import BinanceCandlesHistoryRespository
 class BinanceCandlesHistoryService:
-    def __init__(self, no_of_threads):
-        self.binance_candles_history_repository_list =[]
-        for i in range(no_of_threads):
-            self.binance_candles_history_repository_list.append(BinanceCandlesHistoryRespository())
-        self.binance_candles_history_repository = self.binance_candles_history_repository_list[0]  # Use the first repository for now
+    def __init__(self, max_number_of_threads):
+        self.binance_candles_repository_list =[]
+        self.slot_queue = queue.Queue()
+        for i in range(max_number_of_threads):
+            self.slot_queue.put(i)  # Initialize the queue with available slots
+            self.binance_candles_repository_list.append(BinanceCandlesHistoryRespository())
         
+        self.common_binance_candles_repository = BinanceCandlesHistoryRespository()  
 
     BATCH_SIZE = 500  # Number of candles to fetch in each batch
     BATCH_TIME_SPAN = 500 * 60 * 1000  # Time span for each batch in milliseconds (500 candles * 1 minute)
@@ -27,31 +29,48 @@ class BinanceCandlesHistoryService:
                 print(f"Max retries reached. Failed to fetch and store candles for {symbol} from {start_time} to {end_time}.")
                 raise e
 
+    def thread_work(self, symbol, batch_start_time, batch_end_time, slot,candles, failed_batches):
+        try:
+            batch_candles =self.fetch_and_store_candles_batch(symbol, batch_start_time, batch_end_time, self.binance_candles_repository_list[slot])
+            self.slot_queue.put(slot)  # Release the slot after processing
+            candles.extend(batch_candles)
+        except Exception as e:
+            
+            failed_batches.put((batch_start_time, batch_end_time))
+            print(f"Error occurred while fetching and storing candles for batch: {e}")
+            self.slot_queue.put(slot)  # Release the slot even if there was an error
+
     def fetch_and_store_candles(self, symbol, start_time, end_time):
         batch_start_time_milestones = list(range(start_time, end_time+1, self.BATCH_TIME_SPAN))
         failed_batches = queue.Queue()
         candles = []
+        threads = []
         for batch_start_time in batch_start_time_milestones:
             batch_end_time = min(batch_start_time + self.BATCH_TIME_SPAN - 1, end_time)
-            try:
-                batch_candles = self.fetch_and_store_candles_batch(symbol, batch_start_time, batch_end_time, self.binance_candles_history_repository)
-                candles.extend(batch_candles)
-            except Exception as e:
-                failed_batches.put((batch_start_time, batch_end_time))
-                print(f"Error occurred while fetching and storing candles for batch: {e}")
+            
+            slot = self.slot_queue.get()  # Acquire a slot
+            thread = threading.Thread(target=self.thread_work, args=(symbol, batch_start_time, batch_end_time, slot,candles, failed_batches))
+            threads.append(thread)
+            thread.start()
+            
+        for thread in threads:
+            thread.join()  # Wait for all threads to finish
+        candles.sort(key=lambda x: x[0])  # Sort the candles by open_time
         return candles, failed_batches
         
         
-    def get_candles(self, symbol, start_time, end_time):
-        currently_stored_candles,missing_ranges = self.binance_candles_history_repository.get_candles(symbol, start_time, end_time)
+    def get_candles(self, symbol, start_time, end_time,interval="1m"):
+        currently_stored_candles,missing_ranges = self.common_binance_candles_repository.get_candles(symbol, start_time, end_time,interval)
+        failed_batches_from_all_fetches = queue.Queue()
         for missing_range in missing_ranges:
             missing_start_time, missing_end_time = missing_range
             # Fetch and store the missing candles
-            fetched_candles = self.fetch_and_store_candles(symbol, missing_start_time, missing_end_time)[0]
-            self.binance_candles_history_repository.insert_candles_to_temp_db(symbol, fetched_candles)
+            fetched_candles, failed_batches = self.fetch_and_store_candles(symbol, missing_start_time, missing_end_time)
             currently_stored_candles.extend(fetched_candles)
+            while not failed_batches.empty():
+                failed_batches_from_all_fetches.put(failed_batches.get())
         currently_stored_candles.sort(key=lambda x: x[0])  # Sort the candles by open_time
-        return currently_stored_candles
+        return currently_stored_candles,failed_batches_from_all_fetches
          
 
     
