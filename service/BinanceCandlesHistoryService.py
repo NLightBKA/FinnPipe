@@ -2,15 +2,19 @@ from klines_extractor.binance import extract_past_binance_candles
 import queue
 import threading
 from respository.BinanceCandlesHistoryRespository import BinanceCandlesHistoryRespository
+from database_connection.PostgreClient import PostgreClient
+from database_connection.ClickHouseClient import ClickHouseClient
 class BinanceCandlesHistoryService:
     def __init__(self, max_number_of_threads):
         self.binance_candles_repository_list =[]
         self.slot_queue = queue.Queue()
         for i in range(max_number_of_threads):
             self.slot_queue.put(i)  # Initialize the queue with available slots
-            self.binance_candles_repository_list.append(BinanceCandlesHistoryRespository())
+            postgre_client = PostgreClient()
+            clickhouse_client = ClickHouseClient()
+            self.binance_candles_repository_list.append(BinanceCandlesHistoryRespository(postgre_client, clickhouse_client))
         
-        self.common_binance_candles_repository = BinanceCandlesHistoryRespository()  
+        self.common_binance_candles_repository = BinanceCandlesHistoryRespository(PostgreClient(), ClickHouseClient())
 
     BATCH_SIZE = 500  # Number of candles to fetch in each batch
     BATCH_TIME_SPAN = 500 * 60 * 1000  # Time span for each batch in milliseconds (500 candles * 1 minute)

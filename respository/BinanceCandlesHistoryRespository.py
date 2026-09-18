@@ -3,7 +3,7 @@ from database_connection import DatabaseClient, PostgreClient, ClickHouseClient
 
 class BinanceCandlesHistoryRespository:
 
-    def __init__(self,temp_db=PostgreClient.PostgreClient(), permanent_db=ClickHouseClient.ClickHouseClient()):
+    def __init__(self,temp_db, permanent_db):
         self.temp_database_client = temp_db
         self.permanent_database_client = permanent_db
         self.columns = ["open_time", "open", "high", "low", "close", "volume", "close_time", "quote_asset_volume", "number_of_trades", "taker_buy_base_asset_volume", "taker_buy_quote_asset_volume"]
@@ -25,10 +25,12 @@ class BinanceCandlesHistoryRespository:
             "1M": 43200
         }
     def create_tables(self,symbol):
+        symbol = symbol.lower()
         self.create_table_for_temp_db(symbol)
         self.create_table_for_permanent_db(symbol)
 
     def create_table_for_temp_db(self,symbol):
+        symbol = symbol.lower()
         create_temp_table_query = f"""
         CREATE TABLE IF NOT EXISTS binance_{symbol}_candles (
             open_time BIGINT PRIMARY KEY,
@@ -47,6 +49,7 @@ class BinanceCandlesHistoryRespository:
         self.temp_database_client.execute_query(create_temp_table_query)
 
     def create_table_for_permanent_db(self,symbol):
+        symbol = symbol.lower()
         create_permanent_table_query = f"""
         CREATE TABLE IF NOT EXISTS binance_{symbol}_candles (
             open_time BIGINT PRIMARY KEY,
@@ -66,23 +69,52 @@ class BinanceCandlesHistoryRespository:
         self.permanent_database_client.execute_query(create_permanent_table_query)
 
     def insert_candles_to_temp_db(self, symbol, candles): 
+        symbol = symbol.lower()
         self.temp_database_client.insert_many(f"binance_{symbol}_candles", self.columns, candles)
 
     def insert_candles_to_permanent_db(self, symbol, candles): #private method to insert candles into permanent database
+        symbol = symbol.lower()
         self.permanent_database_client.insert_many(f"binance_{symbol}_candles", self.columns, candles)
         
 
     def insert_candles_to_permanent_db_from_temp_db(self, symbol):
+        symbol = symbol.lower()
         candles =self.temp_database_client.execute_query(f"SELECT * FROM binance_{symbol}_candles;")
         self.insert_candles_to_permanent_db(symbol, candles)
-    def candles_first_and_last_open_time(self,start_time, end_time,interval): #private method to get the first and last open time of candles in the given time range
+    def candles_first_and_last_open_time(self,start_time, end_time): #private method to get the first and last open time of candles in the given time range
+        interval = "1m"  # Default interval
         scale = self.interval_to_scale.get(interval)
         first_candles_open_time = int(start_time / (60000 * scale)) * (60000 * scale)
         last_candles_open_time = int(end_time / (60000 * scale)) * (60000 * scale)
         if (start_time % (60000 * scale)) != 0:
             first_candles_open_time += 60000 * scale
         return first_candles_open_time, last_candles_open_time
-    
+
+
+
+    def get_candles(self, symbol, start_time, end_time):
+        symbol = symbol.lower()
+        query=f"""
+        SELECT * FROM binance_{symbol}_candles
+        WHERE open_time >= {start_time} AND open_time <= {end_time};
+        """
+        candles_1=self.temp_database_client.execute_query(query)
+        candles_2=self.permanent_database_client.execute_query(query)
+        candles = sorted(candles_1 + candles_2, key=lambda x: x[0])
+        missing_ranges = []
+        first_candles_open_time, last_candles_open_time = self.candles_first_and_last_open_time(start_time, end_time)
+        if candles:
+            
+            if candles[0][0] > first_candles_open_time:
+                missing_ranges.append((first_candles_open_time, candles[0][0] - 60000))
+            for i in range(1, len(candles)):
+                if candles[i][0] - candles[i - 1][0] > 60000:
+                    missing_ranges.append((candles[i - 1][0] + 60000, candles[i][0] - 60000))
+            if candles[-1][0] < last_candles_open_time:
+                missing_ranges.append((candles[-1][0] + 60000, last_candles_open_time))
+        return candles, missing_ranges
+
+'''
     def get_candles (self, symbol, start_time, end_time, interval="1m"):
         scale = self.interval_to_scale.get(interval)
         if scale is None:
@@ -154,3 +186,4 @@ class BinanceCandlesHistoryRespository:
                 missing_ranges.extend(self.get_candles(symbol,merged_candle[0], merged_candle[6], "1m")[1])
             merged_candle=merged_candle[:11]
         return merged_candles, missing_ranges
+'''
