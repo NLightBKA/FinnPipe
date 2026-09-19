@@ -4,6 +4,7 @@ import threading
 from respository.BinanceCandlesHistoryRespository import BinanceCandlesHistoryRespository
 from database_connection.PostgreClient import PostgreClient
 from database_connection.ClickHouseClient import ClickHouseClient
+from klines_extractor.binance import LIMIT
 class BinanceCandlesHistoryService:
     def __init__(self, max_number_of_threads):
         self.binance_candles_repository_list =[]
@@ -16,8 +17,8 @@ class BinanceCandlesHistoryService:
         
         self.common_binance_candles_repository = BinanceCandlesHistoryRespository(PostgreClient(), ClickHouseClient())
 
-    BATCH_SIZE = 500  # Number of candles to fetch in each batch
-    BATCH_TIME_SPAN = 500 * 60 * 1000  # Time span for each batch in milliseconds (500 candles * 1 minute)
+    BATCH_SIZE = LIMIT  # Number of candles to fetch in each batch
+    BATCH_TIME_SPAN = BATCH_SIZE * 60 * 1000  # Time span for each batch in milliseconds (500 candles * 1 minute)
     def fetch_and_store_candles_batch(self, symbol, start_time, end_time, binance_candles_respository, try_count=1,max_retries=3):
         try:
             # Fetch candles from Binance API

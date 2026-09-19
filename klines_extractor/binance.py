@@ -1,7 +1,13 @@
 import requests
 from email.utils import parsedate_to_datetime
-BINANCE_API_URL = "https://api.binance.com/api/v3/klines"
 
+from klines_extractor.RateLimiter import RateLimiter
+BINANCE_API_URL = "https://api.binance.com/api/v3/klines"
+_session = requests.Session()
+_adapter = requests.adapters.HTTPAdapter(pool_connections=100, pool_maxsize=100)
+_session.mount('https://', _adapter)
+_session.mount('http://', _adapter)
+rate_limiter = RateLimiter()
 interval_to_timestamp = {
     "1m": 60000,
     "3m": 180000,
@@ -58,20 +64,32 @@ def clean_candles(candles):
     return cleaned_candles
 
 def extract_past_binance_candles(symbol,  start_time, end_time, interval="1m"):
-    symbol = symbol.upper()
-    check_limit(start_time, end_time,interval)
-    params = {
-        "symbol": symbol,
-        "interval": interval,
-        "startTime": start_time,
-        "endTime": end_time
-    }
-    response = requests.get(BINANCE_API_URL, params=params)  #responce contain candles where open_time lie within [start_time,end_time]
-    response.raise_for_status()  #raise an exception if the request was unsuccessful
-    response_date_header = response.headers.get('Date')
-    dt= parsedate_to_datetime(response_date_header)
-    timestamp = int(dt.timestamp() * 1000)
-    if response.json():
-        if response.json()[-1][6] > timestamp:
-            response.json().pop(-1) #remove the last candle if it is not closed yet
-    return clean_candles(response.json())
+    try:
+        
+        rate_limiter.wait_and_pause(0.04)  # Wait if the rate limit has been reached
+        
+        symbol = symbol.upper()
+        check_limit(start_time, end_time,interval)
+        params = {
+            "symbol": symbol,
+            "interval": interval,
+            "startTime": start_time,
+            "endTime": end_time
+        }
+        response = _session.get(BINANCE_API_URL, params=params)  #responce contain candles where open_time lie within [start_time,end_time]
+        response.raise_for_status()  #raise an exception if the request was unsuccessful
+        response_date_header = response.headers.get('Date')
+        dt= parsedate_to_datetime(response_date_header)
+        timestamp = int(dt.timestamp() * 1000)
+        candles = response.json()
+        if candles:
+            if candles[-1][6] > timestamp:
+                candles.pop(-1) #remove the last candle if it is not closed yet
+        return clean_candles(candles)
+    except requests.exceptions.HTTPError as e:
+        if response.status_code in (429, 418):
+            retry_after = int(response.headers.get("Retry-After", 5))
+            print("Rate limit exceeded. Please try again after", retry_after, "seconds.")
+            rate_limiter.pause_for(retry_after) 
+        raise 
+        
