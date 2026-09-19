@@ -91,16 +91,45 @@ class BinanceCandlesHistoryRespository:
         return first_candles_open_time, last_candles_open_time
 
 
+    def merge_candles(self, candles_1, candles_2):
+        merged_candles = []
+        i, j = 0, 0
+        def check_duplicate_and_append(merged_candles, candle):
+            if not merged_candles or merged_candles[-1][0] != candle[0]:
+                merged_candles.append(candle)
+        while i < len(candles_1) and j < len(candles_2):
+            if candles_1[i][0] < candles_2[j][0]:
+                check_duplicate_and_append(merged_candles, candles_1[i])
+                i += 1
 
+            elif candles_1[i][0] > candles_2[j][0]:
+                check_duplicate_and_append(merged_candles, candles_2[j])
+                j += 1
+
+            elif candles_1[i][0] == candles_2[j][0]:
+                check_duplicate_and_append(merged_candles, candles_1[i])
+                i += 1
+                j += 1
+
+            while i < len(candles_1):
+                check_duplicate_and_append(merged_candles, candles_1[i])
+                i += 1
+
+            while j < len(candles_2):
+                check_duplicate_and_append(merged_candles, candles_2[j])
+                j += 1
+       
+
+        return merged_candles
     def get_candles(self, symbol, start_time, end_time):
         symbol = symbol.lower()
         query=f"""
         SELECT * FROM binance_{symbol}_candles
-        WHERE open_time >= {start_time} AND open_time <= {end_time};
+        WHERE open_time >= {start_time} AND open_time <= {end_time} ORDER BY open_time;
         """
         candles_1=self.temp_database_client.execute_query(query)
         candles_2=self.permanent_database_client.execute_query(query)
-        candles = sorted(candles_1 + candles_2, key=lambda x: x[0])
+        candles = self.merge_candles(candles_1, candles_2)
         missing_ranges = []
         first_candles_open_time, last_candles_open_time = self.candles_first_and_last_open_time(start_time, end_time)
         if candles:

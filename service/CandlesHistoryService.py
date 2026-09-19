@@ -1,42 +1,43 @@
-from klines_extractor.binance import extract_past_binance_candles
+from klines_extractor import binance_candles_fetcher
 import queue
 import threading
 from respository.BinanceCandlesHistoryRespository import BinanceCandlesHistoryRespository
 from database_connection.PostgreClient import PostgreClient
 from database_connection.ClickHouseClient import ClickHouseClient
-from klines_extractor.binance import LIMIT
-class BinanceCandlesHistoryService:
-    def __init__(self, max_number_of_threads):
-        self.binance_candles_repository_list =[]
+from klines_extractor.binance_candles_fetcher import LIMIT
+class CandlesHistoryService:
+    def __init__(self,candles_repository_class,candles_fetcher_module,  max_number_of_threads):
+        self.candles_repository_list =[]
         self.slot_queue = queue.Queue()
+        self.candles_fetcher_module = candles_fetcher_module
         for i in range(max_number_of_threads):
             self.slot_queue.put(i)  # Initialize the queue with available slots
             postgre_client = PostgreClient()
             clickhouse_client = ClickHouseClient()
-            self.binance_candles_repository_list.append(BinanceCandlesHistoryRespository(postgre_client, clickhouse_client))
+            self.candles_repository_list.append(candles_repository_class(postgre_client, clickhouse_client))
         
-        self.common_binance_candles_repository = BinanceCandlesHistoryRespository(PostgreClient(), ClickHouseClient())
+        self.common_candles_repository =  candles_repository_class(PostgreClient(), ClickHouseClient())
 
     BATCH_SIZE = LIMIT  # Number of candles to fetch in each batch
     BATCH_TIME_SPAN = BATCH_SIZE * 60 * 1000  # Time span for each batch in milliseconds (500 candles * 1 minute)
-    def fetch_and_store_candles_batch(self, symbol, start_time, end_time, binance_candles_respository, try_count=1,max_retries=3):
+    def fetch_and_store_candles_batch(self, symbol, start_time, end_time, candles_respository, try_count=1,max_retries=3):
         try:
-            # Fetch candles from Binance API
-            candles = extract_past_binance_candles(symbol, start_time, end_time)
+            # Fetch candles from API
+            candles = self.candles_fetcher_module.extract_past_candles(symbol, start_time, end_time)
             
-            binance_candles_respository.insert_candles_to_temp_db(symbol, candles)
+            candles_respository.insert_candles_to_temp_db(symbol, candles)
             return candles
         except Exception as e:
             if try_count <= max_retries:
                 print(f"Error occurred while fetching and storing candles: {e}. Retrying ({try_count}/{max_retries})...")
-                return self.fetch_and_store_candles_batch(symbol, start_time, end_time,binance_candles_respository, try_count + 1, max_retries)
+                return self.fetch_and_store_candles_batch(symbol, start_time, end_time,candles_respository, try_count + 1, max_retries)
             else:
                 print(f"Max retries reached. Failed to fetch and store candles for {symbol} from {start_time} to {end_time}.")
                 raise e
 
     def thread_work(self, symbol, batch_start_time, batch_end_time, slot,candles, failed_batches):
         try:
-            batch_candles =self.fetch_and_store_candles_batch(symbol, batch_start_time, batch_end_time, self.binance_candles_repository_list[slot])
+            batch_candles =self.fetch_and_store_candles_batch(symbol, batch_start_time, batch_end_time, self.candles_repository_list[slot])
             self.slot_queue.put(slot)  # Release the slot after processing
             candles.extend(batch_candles)
         except Exception as e:
@@ -65,7 +66,7 @@ class BinanceCandlesHistoryService:
         
         
     def get_candles(self, symbol, start_time, end_time):
-        currently_stored_candles,missing_ranges = self.common_binance_candles_repository.get_candles(symbol, start_time, end_time)
+        currently_stored_candles,missing_ranges = self.common_candles_repository.get_candles(symbol, start_time, end_time)
         failed_batches_from_all_fetches = queue.Queue()
         for missing_range in missing_ranges:
             missing_start_time, missing_end_time = missing_range

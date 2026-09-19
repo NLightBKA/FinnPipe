@@ -63,7 +63,7 @@ def clean_candles(candles):
         cleaned_candles.append(cleaned_candle)
     return cleaned_candles
 
-def extract_past_binance_candles(symbol,  start_time, end_time, interval="1m"):
+def extract_past_candles(symbol,  start_time, end_time, interval="1m"):
     try:
         
         rate_limiter.wait_and_pause(0.04)  # Wait if the rate limit has been reached
