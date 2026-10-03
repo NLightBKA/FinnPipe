@@ -1,4 +1,4 @@
-from database_connection import DatabaseClient, PostgreClient, ClickHouseClient
+from database_connection import DatabaseClient, PostgreClient
 
 
 class BinanceCandlesHistoryRespository:

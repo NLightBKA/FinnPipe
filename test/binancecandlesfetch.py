@@ -1,8 +1,7 @@
 from datetime import datetime
 from database_connection.PostgreClient import PostgreClient
-from database_connection.ClickHouseClient import ClickHouseClient
+from database_client import ClickHouseClient
 from klines_extractor.binance import extract_past_binance_candles
-from respository.BinanceCandlesHistoryRespository import BinanceCandlesHistoryRespository
 from service.BinanceCandlesHistoryService import BinanceCandlesHistoryService
 
 
