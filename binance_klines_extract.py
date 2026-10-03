@@ -1,50 +1,38 @@
 import requests
 from email.utils import parsedate_to_datetime
 
-from klines_extractor.RateLimiter import RateLimiter
+import config
+from rate_limiter import RateLimiter
 BINANCE_API_URL = "https://api.binance.com/api/v3/klines"
+INTERVAL_IN_MS=60000
+BATCH_LIMIT=config.BINANCE_KLINES_EXTRACTION_BATCH_SIZE
+RATE_LIMIT= config.BINANCE_KLINES_EXTRACTION_RATE_LIMIT #REQUEST PER SEC
+
 _session = requests.Session()
 _adapter = requests.adapters.HTTPAdapter(pool_connections=100, pool_maxsize=100)
 _session.mount('https://', _adapter)
 _session.mount('http://', _adapter)
 rate_limiter = RateLimiter()
-interval_to_timestamp = {
-    "1m": 60000,
-    "3m": 180000,
-    "5m": 300000,
-    "15m": 900000,
-    "30m": 1800000,
-    "1h": 3600000,
-    "2h": 7200000,
-    "4h": 14400000,
-    "6h": 21600000,
-    "8h": 28800000,
-    "12h": 43200000,
-    "1d": 86400000,
-    "3d": 259200000,
-    "1w": 604800000,
-    "1M": 259200000
-}
-LIMIT=500
+
+
 """
 Checks if the time range exceeds the limit of candles.
 Args:
-    interval : interval for candlestick (1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M)
     start_time : 
     end_time : 
 Raises:
     ValueError: If the time range exceeds the limit.
 """
-def check_limit (start_time, end_time,interval):
-    interval_in_ms = interval_to_timestamp.get(interval)
-    
+def check_limit (start_time, end_time):
+
+    interval_in_ms = INTERVAL_IN_MS
     first_candle_open_time = int( start_time / interval_in_ms) * interval_in_ms
     last_candle_open_time = int( end_time / interval_in_ms) * interval_in_ms
     if (start_time%interval_in_ms) !=0:
         first_candle_open_time += interval_in_ms
     
-    if (last_candle_open_time - first_candle_open_time)/interval_in_ms+1 > LIMIT:
-        raise ValueError(f"Time range exceeds the limit of {LIMIT} candles. Please reduce the time range.")
+    if (last_candle_open_time - first_candle_open_time)/interval_in_ms+1 > BATCH_LIMIT:
+        raise ValueError(f"Time range exceeds the limit of {BATCH_LIMIT} candles. Please reduce the time range.")
 """
 Extracts binance candlestick 
 Args: 
@@ -63,16 +51,16 @@ def clean_candles(candles):
         cleaned_candles.append(cleaned_candle)
     return cleaned_candles
 
-def extract_past_candles(symbol,  start_time, end_time, interval="1m"):
+def extract_past_candles(symbol,  start_time, end_time):
     try:
-        
-        rate_limiter.wait_and_pause(0.04)  # Wait if the rate limit has been reached
+
+        rate_limiter.wait_and_pause(1/RATE_LIMIT)  # Wait if the rate limit has been reached
         
         symbol = symbol.upper()
-        check_limit(start_time, end_time,interval)
+        check_limit(start_time, end_time)
         params = {
             "symbol": symbol,
-            "interval": interval,
+            "interval": "1m",
             "startTime": start_time,
             "endTime": end_time
         }
